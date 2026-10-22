@@ -88,7 +88,7 @@
         </div>
         <div>
           <h1 class="text-xl font-bold tracking-tight text-white">Austin Shows</h1>
-          <p class="text-xs text-zinc-400">Apple Music Library to Live ATX Concerts</p>
+          <p class="text-xs text-zinc-400">Apple Music Library to Live Texas Concerts</p>
         </div>
       </div>
 
@@ -144,7 +144,7 @@
         <div class="pt-1 flex gap-2">
           <button id="checkShowsBtn" onclick="runAustinCheck()" class="w-full py-3 rounded-xl bg-apple-red hover:bg-apple-redHover text-white font-semibold text-sm shadow-lg shadow-apple-red/20 transition flex items-center justify-center gap-2">
             <i class="fa-solid fa-bolt"></i>
-            <span>Find Shows in Austin</span>
+            <span>Find Shows in Austin &amp; Texas</span>
           </button>
           <button id="stopScanBtn" onclick="stopScan()" class="hidden px-4 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-rose-400 shrink-0">
             Stop
@@ -169,16 +169,19 @@
 
     <!-- Results Section (Hidden until scan runs) -->
     <section id="resultsSection" class="hidden space-y-4">
-      <div class="flex items-center justify-between border-b border-zinc-800 pb-3">
-        <div class="flex gap-2">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 pb-3">
+        <div class="flex flex-wrap gap-2">
           <button onclick="setFilter('all')" id="tabAll" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-black transition">
             All (<span id="countAll">0</span>)
           </button>
           <button onclick="setFilter('playing')" id="tabPlaying" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 hover:text-white transition">
             Playing in Austin (<span id="countPlaying">0</span>)
           </button>
+          <button onclick="setFilter('texas')" id="tabTexas" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 hover:text-white transition">
+            Playing in Texas (<span id="countTexas">0</span>)
+          </button>
         </div>
-        <span class="text-[11px] text-zinc-500">Austin Metro • 35mi radius</span>
+        <span id="regionLabel" class="text-[11px] text-zinc-500">Austin Metro • 35mi radius</span>
       </div>
 
       <div id="resultsList" class="grid sm:grid-cols-2 gap-3"></div>
@@ -465,7 +468,11 @@
 
         if (apiKey) {
           const shows = await queryTicketmasterAustin(profile.name, item.name, apiKey);
+          await new Promise(r => setTimeout(r, 250));
+          const texasShows = abortScan ? null : await queryTicketmasterAustin(profile.name, item.name, apiKey, 'texas');
           resultsData.push({
+            texasEvents: texasShows || [],
+            texasMode: texasShows === null ? 'API_ERROR' : 'LIVE_API',
             artist: profile.name,
             genre: profile.genre,
             artwork: profile.artwork,
@@ -527,26 +534,35 @@
       return fallback;
     }
 
-    async function queryTicketmasterAustin(resolvedName, rawName, apiKey) {
+    async function queryTicketmasterAustin(resolvedName, rawName, apiKey, region = 'austin') {
       try {
-        const url = `https://app.ticketmaster.com/discovery/v2/events.json?keyword=${encodeURIComponent(resolvedName)}&latlong=30.2672,-97.7431&radius=35&unit=miles&classificationName=music&sort=date,asc&size=15&apikey=${encodeURIComponent(apiKey)}`;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error('Ticketmaster request failed');
-        const data = await res.json();
-        const rawEvents = data._embedded?.events || [];
+        const location = region === 'texas' ? 'stateCode=TX&countryCode=US' : 'latlong=30.2672,-97.7431&radius=35&unit=miles';
+        const rawEvents = [];
+        for (let page = 0; page < 5; page++) {
+          const url = `https://app.ticketmaster.com/discovery/v2/events.json?keyword=${encodeURIComponent(resolvedName)}&${location}&classificationName=music&sort=date,asc&size=200&page=${page}&apikey=${encodeURIComponent(apiKey)}`;
+          const res = await fetch(url);
+          if (!res.ok) throw new Error('Ticketmaster request failed');
+          const data = await res.json();
+          rawEvents.push(...(data._embedded?.events || []));
+          if (page + 1 >= (data.page?.totalPages || 1) || abortScan) break;
+          await new Promise(r => setTimeout(r, 250));
+        }
 
         const matched = rawEvents.filter(ev => isExactArtist(ev, resolvedName) || isExactArtist(ev, rawName));
         const deduped = new Map();
 
         matched.forEach(ev => {
           const v = ev._embedded?.venues?.[0];
-          const venueName = v?.name || 'Austin Venue';
+          const venueName = v?.name || 'Venue';
+          if (region === 'texas' && !['TX', 'Texas'].includes(v?.state?.stateCode || v?.state?.name)) return;
+          const city = v?.city?.name || '';
           const date = ev.dates?.start?.localDate || 'TBA';
-          const key = `${date}|${normKey(venueName)}`;
+          const key = `${date}|${normKey(venueName)}|${normKey(city)}`;
           if (!deduped.has(key)) {
             deduped.set(key, {
               name: ev.name,
               venue: venueName,
+              city,
               date: formatShortDate(date),
               price: formatTicketPrice(ev.priceRanges),
               url: ev.url || `https://www.ticketmaster.com/search?q=${encodeURIComponent(resolvedName + ' Austin')}`
@@ -577,12 +593,11 @@
     // =========================================================================
     function setFilter(filter) {
       activeFilter = filter;
-      document.getElementById('tabAll').className = filter === 'all'
-        ? 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-black transition'
-        : 'px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 hover:text-white transition';
-      document.getElementById('tabPlaying').className = filter === 'playing'
-        ? 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-black transition'
-        : 'px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 hover:text-white transition';
+      for (const [value, id] of [['all', 'tabAll'], ['playing', 'tabPlaying'], ['texas', 'tabTexas']]) {
+        document.getElementById(id).className = value === filter
+          ? 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-black transition'
+          : 'px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 hover:text-white transition';
+      }
       renderResults();
     }
 
@@ -593,16 +608,19 @@
       document.getElementById('countAll').textContent = resultsData.length;
       document.getElementById('countPlaying').textContent = playingCount;
 
-      const list = activeFilter === 'playing'
-        ? resultsData.filter(r => r.events.length > 0)
-        : resultsData;
+      document.getElementById('countTexas').textContent = resultsData.filter(r => r.texasEvents?.length > 0).length;
+      const isTexas = activeFilter === 'texas';
+      document.getElementById('regionLabel').textContent = isTexas ? 'Texas statewide • includes Austin' : 'Austin Metro • 35mi radius';
+      const list = isTexas
+        ? resultsData.filter(r => r.texasEvents?.length > 0).map(r => ({ ...r, events: r.texasEvents, mode: r.texasMode }))
+        : activeFilter === 'playing' ? resultsData.filter(r => r.events.length > 0) : resultsData;
 
       container.innerHTML = '';
 
       if (list.length === 0) {
         container.innerHTML = `
           <div class="sm:col-span-2 surface rounded-2xl p-8 text-center text-xs text-zinc-500">
-            No confirmed Austin shows found for this filter.
+            ${isTexas && resultsData.some(r => r.texasMode === 'API_ERROR') ? 'Some Texas searches were unavailable. Try scanning again.' : `No confirmed ${isTexas ? 'Texas' : 'Austin'} shows found for this filter.`}
           </div>
         `;
         return;
@@ -628,6 +646,7 @@
             <div class="p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800 flex items-center justify-between gap-2">
               <div class="min-w-0">
                 <div class="text-xs font-semibold text-white truncate">${escapeHTML(ev.venue)}</div>
+                ${ev.city ? `<div class="text-[11px] text-zinc-400">${escapeHTML(ev.city)}</div>` : ''}
                 <div class="text-[11px] text-zinc-400">${escapeHTML(ev.date)}</div>
                 <div class="text-[11px] text-emerald-400 mt-1">${escapeHTML(ev.price)}</div>
               </div>
@@ -668,7 +687,7 @@
               </div>
             </div>
             ${hasShows
-              ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">Playing ATX</span>`
+              ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">${isTexas ? 'Playing TX' : 'Playing ATX'}</span>`
               : `<span class="px-2 py-0.5 rounded-full text-[11px] text-zinc-500 bg-zinc-900 shrink-0">${item.mode === 'LIVE_API' ? '0 Dates' : item.mode === 'API_ERROR' ? 'Search unavailable' : 'Check Links'}</span>`
             }
           </div>
