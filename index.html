@@ -54,44 +54,6 @@
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none"></div>
 
-  <!-- Minimal API Key Modal -->
-  <div id="apiModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-    <div class="surface max-w-md w-full rounded-2xl p-6 shadow-2xl space-y-4">
-      <div class="flex items-center justify-between">
-        <h3 class="text-base font-semibold text-white flex items-center gap-2">
-          <i class="fa-solid fa-key text-apple-red text-sm"></i> Live Ticketmaster API Key
-        </h3>
-        <button onclick="toggleApiModal(false)" class="text-zinc-400 hover:text-white p-1">
-          <i class="fa-solid fa-xmark"></i>
-        </button>
-      </div>
-      
-      <p class="text-xs text-zinc-400 leading-relaxed">
-        Add a free Consumer Key from <a href="https://developer.ticketmaster.com/" target="_blank" rel="noopener" class="text-apple-red underline hover:text-red-400">developer.ticketmaster.com</a> to automatically scan Austin venues. Without a key, this app still pulls official Apple Music profiles and gives you 1-click Austin concert links.
-      </p>
-
-      <div class="space-y-2">
-        <input type="password" id="apiKeyInput" placeholder="Paste Ticketmaster Consumer Key..."
-          class="w-full px-3.5 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-apple-red">
-        <div id="apiFeedback" class="text-xs hidden"></div>
-      </div>
-
-      <div class="flex items-center justify-between pt-2">
-        <button onclick="clearApiKey()" class="text-xs text-zinc-500 hover:text-zinc-300">
-          Clear Key
-        </button>
-        <div class="flex gap-2">
-          <button onclick="toggleApiModal(false)" class="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-200 transition">
-            Cancel
-          </button>
-          <button onclick="saveAndVerifyKey()" id="saveKeyBtn" class="px-4 py-2 rounded-xl bg-apple-red hover:bg-apple-redHover text-xs font-semibold text-white transition">
-            Save &amp; Verify
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- Bulk Paste Modal -->
   <div id="pasteModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 backdrop-blur-sm p-4">
     <div class="surface max-w-md w-full rounded-2xl p-6 shadow-2xl space-y-4">
@@ -130,10 +92,10 @@
         </div>
       </div>
 
-      <button onclick="toggleApiModal(true)" class="px-3 py-1.5 rounded-full surface surface-hover text-xs font-medium text-zinc-300 flex items-center gap-2 transition">
-        <span id="keyDot" class="w-2 h-2 rounded-full bg-zinc-500"></span>
-        <span id="keyLabel">API Settings</span>
-      </button>
+      <span class="px-3 py-1.5 rounded-full surface text-xs font-medium text-zinc-300 flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span>Live show search ready</span>
+      </span>
     </header>
 
     <!-- Step 1: Clean Search & Import Bar -->
@@ -236,15 +198,9 @@
     let abortScan = false;
     let searchTimeout = null;
 
-    const STORAGE_KEY = 'atx_shows_tm_key_clean';
+    const TICKETMASTER_API_KEY = '7P0WFhSt7hezqcQe3D7p8ualXN2a362d';
 
     window.addEventListener('DOMContentLoaded', () => {
-      const savedKey = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('atx_gig_finder_tm_api_key_v2');
-      if (savedKey) {
-        document.getElementById('apiKeyInput').value = savedKey;
-        updateKeyIndicator(true);
-      }
-
       const searchInput = document.getElementById('searchInput');
       searchInput.addEventListener('input', (e) => {
         clearTimeout(searchTimeout);
@@ -482,7 +438,7 @@
       const list = Array.from(artistsQueue.values());
       if (list.length === 0) return;
 
-      const apiKey = document.getElementById('apiKeyInput').value.trim();
+      const apiKey = TICKETMASTER_API_KEY;
       scanning = true;
       abortScan = false;
       resultsData = [];
@@ -514,8 +470,8 @@
             genre: profile.genre,
             artwork: profile.artwork,
             appleUrl: profile.appleUrl,
-            mode: 'LIVE_API',
-            events: shows
+            mode: shows === null ? 'API_ERROR' : 'LIVE_API',
+            events: shows || []
           });
           if (i < list.length - 1 && !abortScan) {
             await new Promise(r => setTimeout(r, 230));
@@ -575,7 +531,7 @@
       try {
         const url = `https://app.ticketmaster.com/discovery/v2/events.json?keyword=${encodeURIComponent(resolvedName)}&latlong=30.2672,-97.7431&radius=35&unit=miles&classificationName=music&sort=date,asc&size=15&apikey=${encodeURIComponent(apiKey)}`;
         const res = await fetch(url);
-        if (!res.ok) return [];
+        if (!res.ok) throw new Error('Ticketmaster request failed');
         const data = await res.json();
         const rawEvents = data._embedded?.events || [];
 
@@ -599,7 +555,8 @@
 
         return Array.from(deduped.values());
       } catch (e) {
-        return [];
+        notify('Could not reach Ticketmaster. Try again shortly or use the concert links below.', true);
+        return null;
       }
     }
 
@@ -689,7 +646,7 @@
             </div>
           `;
         } else {
-          bodyContent = `
+          bodyContent = `${item.mode === 'API_ERROR' ? '<p class="text-xs text-rose-300">Live search unavailable. Check these concert calendars or try again.</p>' : ''}
             <div class="flex flex-wrap gap-1.5">
               <a href="${tmUrl}" target="_blank" rel="noopener" class="px-2.5 py-1.5 rounded-lg bg-apple-red hover:bg-apple-redHover text-xs font-medium text-white transition">Ticketmaster ATX</a>
               <a href="${do512Url}" target="_blank" rel="noopener" class="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300">Do512</a>
@@ -710,7 +667,7 @@
             </div>
             ${hasShows
               ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">Playing ATX</span>`
-              : `<span class="px-2 py-0.5 rounded-full text-[11px] text-zinc-500 bg-zinc-900 shrink-0">${item.mode === 'LIVE_API' ? '0 Dates' : 'Check Links'}</span>`
+              : `<span class="px-2 py-0.5 rounded-full text-[11px] text-zinc-500 bg-zinc-900 shrink-0">${item.mode === 'LIVE_API' ? '0 Dates' : item.mode === 'API_ERROR' ? 'Search unavailable' : 'Check Links'}</span>`
             }
           </div>
           ${bodyContent}
@@ -720,72 +677,8 @@
     }
 
     // =========================================================================
-    // API MODAL & HELPERS
+    // HELPERS
     // =========================================================================
-    function toggleApiModal(show) {
-      const modal = document.getElementById('apiModal');
-      modal.classList.toggle('hidden', !show);
-      modal.classList.toggle('flex', show);
-    }
-
-    function updateKeyIndicator(active) {
-      const dot = document.getElementById('keyDot');
-      const label = document.getElementById('keyLabel');
-      if (active) {
-        dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
-        label.textContent = 'Live API Active';
-      } else {
-        dot.className = 'w-2 h-2 rounded-full bg-zinc-500';
-        label.textContent = 'API Settings';
-      }
-    }
-
-    async function saveAndVerifyKey() {
-      const key = document.getElementById('apiKeyInput').value.trim();
-      const fb = document.getElementById('apiFeedback');
-      const btn = document.getElementById('saveKeyBtn');
-
-      if (!key) {
-        clearApiKey();
-        return;
-      }
-
-      btn.disabled = true;
-      btn.textContent = 'Checking...';
-      fb.classList.remove('hidden');
-      fb.className = 'text-xs text-zinc-400';
-      fb.textContent = 'Verifying key with Ticketmaster...';
-
-      try {
-        const res = await fetch(`https://app.ticketmaster.com/discovery/v2/events.json?city=Austin&stateCode=TX&size=1&apikey=${encodeURIComponent(key)}`);
-        if (res.ok) {
-          localStorage.setItem(STORAGE_KEY, key);
-          updateKeyIndicator(true);
-          fb.className = 'text-xs text-emerald-400';
-          fb.textContent = '✓ Key verified and saved!';
-          setTimeout(() => toggleApiModal(false), 700);
-        } else {
-          fb.className = 'text-xs text-rose-400';
-          fb.textContent = 'Invalid Consumer Key. Please check your key.';
-        }
-      } catch (e) {
-        fb.className = 'text-xs text-rose-400';
-        fb.textContent = 'Network error verifying key.';
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Save & Verify';
-      }
-    }
-
-    function clearApiKey() {
-      localStorage.removeItem(STORAGE_KEY);
-      document.getElementById('apiKeyInput').value = '';
-      document.getElementById('apiFeedback').classList.add('hidden');
-      updateKeyIndicator(false);
-      toggleApiModal(false);
-      notify('API Key cleared.');
-    }
-
     function formatShortDate(iso) {
       const p = iso.split('-');
       if (p.length !== 3) return iso;
