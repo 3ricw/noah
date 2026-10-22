@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Apple Music to Austin Shows</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'sans-serif'] },
+          colors: {
+            apple: {
+              bg: '#0a0a0c',
+              card: '#141418',
+              border: '#26262e',
+              red: '#FA243C',
+              redHover: '#ff3b51'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #0a0a0c;
+      color: #f4f4f6;
+      font-family: 'Inter', sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .surface {
+      background-color: #141418;
+      border: 1px solid #24242c;
+    }
+    .surface-hover:hover {
+      border-color: #383844;
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2e2e38; border-radius: 9999px; }
+  </style>
+</head>
+<body class="min-h-screen pb-20 selection:bg-apple-red selection:text-white">
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none"></div>
+
+  <!-- Minimal API Key Modal -->
+  <div id="apiModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    <div class="surface max-w-md w-full rounded-2xl p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-semibold text-white flex items-center gap-2">
+          <i class="fa-solid fa-key text-apple-red text-sm"></i> Live Ticketmaster API Key
+        </h3>
+        <button onclick="toggleApiModal(false)" class="text-zinc-400 hover:text-white p-1">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      
+      <p class="text-xs text-zinc-400 leading-relaxed">
+        Add a free Consumer Key from <a href="https://developer.ticketmaster.com/" target="_blank" rel="noopener" class="text-apple-red underline hover:text-red-400">developer.ticketmaster.com</a> to automatically scan Austin venues. Without a key, this app still pulls official Apple Music profiles and gives you 1-click Austin concert links.
+      </p>
+
+      <div class="space-y-2">
+        <input type="password" id="apiKeyInput" placeholder="Paste Ticketmaster Consumer Key..."
+          class="w-full px-3.5 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-apple-red">
+        <div id="apiFeedback" class="text-xs hidden"></div>
+      </div>
+
+      <div class="flex items-center justify-between pt-2">
+        <button onclick="clearApiKey()" class="text-xs text-zinc-500 hover:text-zinc-300">
+          Clear Key
+        </button>
+        <div class="flex gap-2">
+          <button onclick="toggleApiModal(false)" class="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-200 transition">
+            Cancel
+          </button>
+          <button onclick="saveAndVerifyKey()" id="saveKeyBtn" class="px-4 py-2 rounded-xl bg-apple-red hover:bg-apple-redHover text-xs font-semibold text-white transition">
+            Save &amp; Verify
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bulk Paste Modal -->
+  <div id="pasteModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    <div class="surface max-w-md w-full rounded-2xl p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-semibold text-white">Paste Artist List</h3>
+        <button onclick="togglePasteModal(false)" class="text-zinc-400 hover:text-white p-1">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <p class="text-xs text-zinc-400">Paste one artist per line:</p>
+      <textarea id="bulkPasteInput" rows="6" placeholder="Type or paste artists here..."
+        class="w-full p-3 rounded-xl bg-zinc-900 border border-zinc-800 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-apple-red"></textarea>
+      <div class="flex justify-end gap-2">
+        <button onclick="togglePasteModal(false)" class="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-200">
+          Cancel
+        </button>
+        <button onclick="submitBulkPaste()" class="px-4 py-2 rounded-xl bg-apple-red hover:bg-apple-redHover text-xs font-semibold text-white">
+          Add Artists
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Container -->
+  <div class="max-w-3xl mx-auto px-4 pt-8 sm:pt-12 space-y-6">
+
+    <!-- Minimal Header -->
+    <header class="flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-apple-red flex items-center justify-center text-white shadow-lg shadow-apple-red/20">
+          <i class="fa-brands fa-apple text-xl"></i>
+        </div>
+        <div>
+          <h1 class="text-xl font-bold tracking-tight text-white">Austin Shows</h1>
+          <p class="text-xs text-zinc-400">Apple Music Library to Live ATX Concerts</p>
+        </div>
+      </div>
+
+      <button onclick="toggleApiModal(true)" class="px-3 py-1.5 rounded-full surface surface-hover text-xs font-medium text-zinc-300 flex items-center gap-2 transition">
+        <span id="keyDot" class="w-2 h-2 rounded-full bg-zinc-500"></span>
+        <span id="keyLabel">API Settings</span>
+      </button>
+    </header>
+
+    <!-- Step 1: Clean Search & Import Bar -->
+    <section class="surface rounded-2xl p-4 sm:p-5 space-y-4 shadow-xl">
+      <div class="flex flex-col sm:flex-row gap-2.5">
+        
+        <!-- Live Apple Music Search Input -->
+        <div class="relative flex-1">
+          <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 text-sm"></i>
+          <input type="text" id="searchInput" autocomplete="off"
+            placeholder="Search Apple Music artists or type &amp; press Enter..."
+            class="w-full pl-10 pr-20 py-3 rounded-xl bg-zinc-900/90 border border-zinc-800 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-apple-red transition">
+          <button onclick="addFromInputBar()" class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-200 transition">
+            Add
+          </button>
+
+          <!-- Autocomplete Dropdown -->
+          <div id="autocompleteMenu" class="hidden absolute left-0 right-0 top-full mt-1.5 surface rounded-xl shadow-2xl overflow-hidden z-40 divide-y divide-zinc-800/80"></div>
+        </div>
+
+        <!-- Upload Playlist Button -->
+        <label class="cursor-pointer px-4 py-3 rounded-xl bg-zinc-900 hover:bg-zinc-800/80 border border-zinc-800 text-xs font-medium text-zinc-200 flex items-center justify-center gap-2 shrink-0 transition" title="Supports Apple Music .xml, .txt (UTF-16), and .csv exports">
+          <i class="fa-solid fa-arrow-up-from-bracket text-apple-red"></i>
+          <span>Import Playlist</span>
+          <input type="file" id="fileInput" accept=".xml,.txt,.csv" class="hidden">
+        </label>
+
+        <!-- Paste List Button -->
+        <button onclick="togglePasteModal(true)" class="px-3.5 py-3 rounded-xl bg-zinc-900 hover:bg-zinc-800/80 border border-zinc-800 text-xs font-medium text-zinc-400 hover:text-zinc-200 flex items-center justify-center gap-1.5 shrink-0 transition" title="Paste a list of artists">
+          <i class="fa-regular fa-paste"></i>
+          <span class=" sm:hidden md:inline">Paste List</span>
+        </button>
+      </div>
+
+      <!-- Selected Artist Chips Queue (Hidden when empty) -->
+      <div id="queueSection" class="hidden pt-2 border-t border-zinc-800/80 space-y-3">
+        <div class="flex items-center justify-between text-xs text-zinc-400">
+          <span>Your Artists (<strong id="artistCount" class="text-white">0</strong>)</span>
+          <button onclick="clearAllArtists()" class="text-zinc-500 hover:text-rose-400 transition">
+            Clear All
+          </button>
+        </div>
+
+        <div id="chipsList" class="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto"></div>
+
+        <div class="pt-1 flex gap-2">
+          <button id="checkShowsBtn" onclick="runAustinCheck()" class="w-full py-3 rounded-xl bg-apple-red hover:bg-apple-redHover text-white font-semibold text-sm shadow-lg shadow-apple-red/20 transition flex items-center justify-center gap-2">
+            <i class="fa-solid fa-bolt"></i>
+            <span>Find Shows in Austin</span>
+          </button>
+          <button id="stopScanBtn" onclick="stopScan()" class="hidden px-4 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-rose-400 shrink-0">
+            Stop
+          </button>
+        </div>
+      </div>
+
+      <!-- Subtle Empty Hint when 0 artists -->
+      <div id="emptyQueueHint" class="text-center py-3 text-xs text-zinc-500">
+        Search for an artist above or drop an exported Apple Music playlist (<code class="text-zinc-400">.xml</code> / <code class="text-zinc-400">.txt</code>) to get started.
+      </div>
+    </section>
+
+    <!-- Progress Indicator -->
+    <div id="progressBox" class="hidden surface rounded-xl px-4 py-3 flex items-center justify-between text-xs">
+      <div class="flex items-center gap-2.5 text-zinc-300">
+        <i class="fa-solid fa-circle-notch fa-spin text-apple-red"></i>
+        <span id="progressText">Checking Austin venues...</span>
+      </div>
+      <span id="progressCount" class="text-zinc-500 font-mono">0/0</span>
+    </div>
+
+    <!-- Results Section (Hidden until scan runs) -->
+    <section id="resultsSection" class="hidden space-y-4">
+      <div class="flex items-center justify-between border-b border-zinc-800 pb-3">
+        <div class="flex gap-2">
+          <button onclick="setFilter('all')" id="tabAll" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-black transition">
+            All (<span id="countAll">0</span>)
+          </button>
+          <button onclick="setFilter('playing')" id="tabPlaying" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 hover:text-white transition">
+            Playing in Austin (<span id="countPlaying">0</span>)
+          </button>
+        </div>
+        <span class="text-[11px] text-zinc-500">Austin Metro • 35mi radius</span>
+      </div>
+
+      <div id="resultsList" class="grid sm:grid-cols-2 gap-3"></div>
+    </section>
+
+  </div>
+
+  <script>
+    // =========================================================================
+    // CLEAN STATE (Starts 100% Empty — No Sample Artists)
+    // =========================================================================
+    const artistsQueue = new Map(); // normKey -> { name, count }
+    const appleCache = new Map();
+    let resultsData = [];
+    let activeFilter = 'all';
+    let scanning = false;
+    let abortScan = false;
+    let searchTimeout = null;
+
+    const STORAGE_KEY = 'atx_shows_tm_key_clean';
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const savedKey = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('atx_gig_finder_tm_api_key_v2');
+      if (savedKey) {
+        document.getElementById('apiKeyInput').value = savedKey;
+        updateKeyIndicator(true);
+      }
+
+      const searchInput = document.getElementById('searchInput');
+      searchInput.addEventListener('input', (e) => {
+        clearTimeout(searchTimeout);
+        const val = e.target.value.trim();
+        if (val.length < 2) {
+          hideAutocomplete();
+          return;
+        }
+        searchTimeout = setTimeout(() => fetchAppleAutocomplete(val), 240);
+      });
+
+      searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          hideAutocomplete();
+          addFromInputBar();
+        }
+      });
+
+      document.addEventListener('click', (e) => {
+        const menu = document.getElementById('autocompleteMenu');
+        if (!menu.contains(e.target) && e.target !== searchInput) {
+          hideAutocomplete();
+        }
+      });
+
+      document.getElementById('fileInput').addEventListener('change', handleFileSelect);
+    });
+
+    // =========================================================================
+    // ARTIST INPUT, LIVE APPLE MUSIC AUTOCOMPLETE & FILE IMPORT
+    // =========================================================================
+    function normKey(str) {
+      return String(str || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function addArtist(name, count = 1) {
+      const clean = String(name || '').trim();
+      if (!clean) return;
+      const key = normKey(clean);
+      const prev = artistsQueue.get(key);
+      if (prev) {
+        prev.count += count;
+      } else {
+        artistsQueue.set(key, { name: clean, count });
+      }
+      renderQueue();
+    }
+
+    function addFromInputBar() {
+      const input = document.getElementById('searchInput');
+      const val = input.value.trim();
+      if (!val) return;
+      addArtist(val, 1);
+      input.value = '';
+      hideAutocomplete();
+    }
+
+    async function fetchAppleAutocomplete(query) {
+      const menu = document.getElementById('autocompleteMenu');
+      try {
+        const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=musicArtist&limit=5`);
+        const data = await res.json();
+        if (!data.results || data.results.length === 0) {
+          hideAutocomplete();
+          return;
+        }
+
+        menu.innerHTML = '';
+        data.results.forEach(item => {
+          const row = document.createElement('button');
+          row.type = 'button';
+          row.className = 'w-full px-4 py-2.5 text-left hover:bg-zinc-800/80 flex items-center justify-between transition';
+          row.innerHTML = `
+            <div class="truncate pr-2">
+              <span class="text-sm font-medium text-white">${escapeHTML(item.artistName)}</span>
+              <span class="text-xs text-zinc-500 ml-2">${escapeHTML(item.primaryGenreName || '')}</span>
+            </div>
+            <span class="text-xs text-apple-red font-semibold shrink-0">+ Add</span>
+          `;
+          row.onclick = () => {
+            addArtist(item.artistName, 1);
+            document.getElementById('searchInput').value = '';
+            hideAutocomplete();
+          };
+          menu.appendChild(row);
+        });
+        menu.classList.remove('hidden');
+      } catch (e) {
+        hideAutocomplete();
+      }
+    }
+
+    function hideAutocomplete() {
+      document.getElementById('autocompleteMenu').classList.add('hidden');
+    }
+
+    function removeArtist(key) {
+      artistsQueue.delete(key);
+      renderQueue();
+    }
+
+    function clearAllArtists() {
+      artistsQueue.clear();
+      resultsData = [];
+      renderQueue();
+      document.getElementById('resultsSection').classList.add('hidden');
+    }
+
+    function renderQueue() {
+      const list = Array.from(artistsQueue.entries());
+      const queueSection = document.getElementById('queueSection');
+      const emptyHint = document.getElementById('emptyQueueHint');
+      const chipsList = document.getElementById('chipsList');
+      const countEl = document.getElementById('artistCount');
+
+      if (list.length === 0) {
+        queueSection.classList.add('hidden');
+        emptyHint.classList.remove('hidden');
+        return;
+      }
+
+      queueSection.classList.remove('hidden');
+      emptyHint.classList.add('hidden');
+      countEl.textContent = list.length;
+      chipsList.innerHTML = '';
+
+      list.forEach(([key, item]) => {
+        const chip = document.createElement('div');
+        chip.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-xs text-zinc-200';
+        chip.innerHTML = `
+          <span class="font-medium">${escapeHTML(item.name)}</span>
+          <button onclick="removeArtist('${escapeJS(key)}')" class="text-zinc-500 hover:text-white ml-0.5">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        `;
+        chipsList.appendChild(chip);
+      });
+    }
+
+    // Bulk Paste Modal
+    function togglePasteModal(show) {
+      const m = document.getElementById('pasteModal');
+      m.classList.toggle('hidden', !show);
+      m.classList.toggle('flex', show);
+      if (show) document.getElementById('bulkPasteInput').focus();
+    }
+
+    function submitBulkPaste() {
+      const raw = document.getElementById('bulkPasteInput').value;
+      const lines = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      lines.forEach(l => addArtist(l, 1));
+      document.getElementById('bulkPasteInput').value = '';
+      togglePasteModal(false);
+      if (lines.length > 0) notify(`Added ${lines.length} artist(s).`);
+    }
+
+    // UTF-16 & UTF-8 Apple Music Playlist File Reader
+    function handleFileSelect(e) {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const bytes = new Uint8Array(ev.target.result);
+        let encoding = 'utf-8';
+        if (bytes.length >= 2) {
+          if (bytes[0] === 0xFF && bytes[1] === 0xFE) encoding = 'utf-16le';
+          else if (bytes[0] === 0xFE && bytes[1] === 0xFF) encoding = 'utf-16be';
+        }
+        const text = new TextDecoder(encoding).decode(ev.target.result);
+        parsePlaylistText(text, file.name);
+        e.target.value = '';
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function parsePlaylistText(text, filename) {
+      const counts = new Map();
+      if (filename.toLowerCase().endsWith('.xml') || text.includes('<plist') || text.includes('<key>Artist</key>')) {
+        const regex = /<key>Artist<\/key>\s*<string>([^<]+)<\/string>/gi;
+        let match;
+        while ((match = regex.exec(text)) !== null) {
+          const name = decodeEntities(match[1].trim());
+          if (name) {
+            const k = normKey(name);
+            counts.set(k, { name, count: (counts.get(k)?.count || 0) + 1 });
+          }
+        }
+      } else {
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (lines.length > 0) {
+          const isTab = lines[0].includes('\t');
+          const delim = isTab ? '\t' : ',';
+          const headers = lines[0].split(delim).map(h => h.replace(/^["']|["']$/g, '').trim().toLowerCase());
+          let artistCol = headers.findIndex(h => h === 'artist' || h === 'artist name');
+          const startRow = (artistCol !== -1 || headers.includes('name')) ? 1 : 0;
+          if (artistCol === -1) artistCol = (isTab && headers.length > 1) ? 1 : 0;
+
+          for (let i = startRow; i < lines.length; i++) {
+            const parts = lines[i].split(delim);
+            const candidate = (parts[artistCol] || '').replace(/^["']|["']$/g, '').trim();
+            if (candidate && candidate.toLowerCase() !== 'artist' && candidate.length < 70) {
+              const k = normKey(candidate);
+              counts.set(k, { name: candidate, count: (counts.get(k)?.count || 0) + 1 });
+            }
+          }
+        }
+      }
+
+      if (counts.size === 0) {
+        notify('Could not find artists in that file.', true);
+        return;
+      }
+
+      const sorted = Array.from(counts.values()).sort((a, b) => b.count - a.count).slice(0, 40);
+      sorted.forEach(item => addArtist(item.name, item.count));
+      notify(`Imported top ${sorted.length} artists from ${filename}`);
+    }
+
+    // =========================================================================
+    // REAL APPLE MUSIC METADATA & ZERO-HALLUCINATION AUSTIN SCANNER
+    // =========================================================================
+    function stopScan() {
+      abortScan = true;
+    }
+
+    async function runAustinCheck() {
+      if (scanning) return;
+      const list = Array.from(artistsQueue.values());
+      if (list.length === 0) return;
+
+      const apiKey = document.getElementById('apiKeyInput').value.trim();
+      scanning = true;
+      abortScan = false;
+      resultsData = [];
+
+      const progressBox = document.getElementById('progressBox');
+      const progressText = document.getElementById('progressText');
+      const progressCount = document.getElementById('progressCount');
+      const stopBtn = document.getElementById('stopScanBtn');
+      const checkBtn = document.getElementById('checkShowsBtn');
+
+      progressBox.classList.remove('hidden');
+      stopBtn.classList.remove('hidden');
+      checkBtn.disabled = true;
+      checkBtn.classList.add('opacity-60');
+      document.getElementById('resultsSection').classList.remove('hidden');
+
+      for (let i = 0; i < list.length; i++) {
+        if (abortScan) break;
+        const item = list[i];
+        progressText.textContent = `Checking ${item.name}...`;
+        progressCount.textContent = `${i + 1}/${list.length}`;
+
+        const profile = await getAppleProfile(item.name);
+
+        if (apiKey) {
+          const shows = await queryTicketmasterAustin(profile.name, item.name, apiKey);
+          resultsData.push({
+            artist: profile.name,
+            genre: profile.genre,
+            artwork: profile.artwork,
+            appleUrl: profile.appleUrl,
+            mode: 'LIVE_API',
+            events: shows
+          });
+          if (i < list.length - 1 && !abortScan) {
+            await new Promise(r => setTimeout(r, 230));
+          }
+        } else {
+          resultsData.push({
+            artist: profile.name,
+            genre: profile.genre,
+            artwork: profile.artwork,
+            appleUrl: profile.appleUrl,
+            mode: 'DIRECT_LINKS',
+            events: []
+          });
+        }
+
+        renderResults();
+      }
+
+      progressBox.classList.add('hidden');
+      stopBtn.classList.add('hidden');
+      checkBtn.disabled = false;
+      checkBtn.classList.remove('opacity-60');
+      scanning = false;
+    }
+
+    async function getAppleProfile(artistName) {
+      const k = normKey(artistName);
+      if (appleCache.has(k)) return appleCache.get(k);
+
+      try {
+        const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(artistName)}&entity=song&limit=5`);
+        const data = await res.json();
+        if (data.results && data.results.length > 0) {
+          const match = data.results.find(r => normKey(r.artistName) === k) || data.results[0];
+          const p = {
+            name: match.artistName || artistName,
+            genre: match.primaryGenreName || 'Music',
+            artwork: match.artworkUrl100 ? match.artworkUrl100.replace('100x100bb', '200x200bb') : null,
+            appleUrl: match.artistViewUrl || `https://music.apple.com/us/search?term=${encodeURIComponent(artistName)}`
+          };
+          appleCache.set(k, p);
+          return p;
+        }
+      } catch (e) {}
+
+      const fallback = {
+        name: artistName,
+        genre: 'Artist',
+        artwork: null,
+        appleUrl: `https://music.apple.com/us/search?term=${encodeURIComponent(artistName)}`
+      };
+      appleCache.set(k, fallback);
+      return fallback;
+    }
+
+    async function queryTicketmasterAustin(resolvedName, rawName, apiKey) {
+      try {
+        const url = `https://app.ticketmaster.com/discovery/v2/events.json?keyword=${encodeURIComponent(resolvedName)}&latlong=30.2672,-97.7431&radius=35&unit=miles&classificationName=music&sort=date,asc&size=15&apikey=${encodeURIComponent(apiKey)}`;
+        const res = await fetch(url);
+        if (!res.ok) return [];
+        const data = await res.json();
+        const rawEvents = data._embedded?.events || [];
+
+        const matched = rawEvents.filter(ev => isExactArtist(ev, resolvedName) || isExactArtist(ev, rawName));
+        const deduped = new Map();
+
+        matched.forEach(ev => {
+          const v = ev._embedded?.venues?.[0];
+          const venueName = v?.name || 'Austin Venue';
+          const date = ev.dates?.start?.localDate || 'TBA';
+          const key = `${date}|${normKey(venueName)}`;
+          if (!deduped.has(key)) {
+            deduped.set(key, {
+              name: ev.name,
+              venue: venueName,
+              date: formatShortDate(date),
+              url: ev.url || `https://www.ticketmaster.com/search?q=${encodeURIComponent(resolvedName + ' Austin')}`
+            });
+          }
+        });
+
+        return Array.from(deduped.values());
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function isExactArtist(ev, artistName) {
+      const target = normKey(artistName);
+      if (!target) return false;
+      const attractions = ev._embedded?.attractions || [];
+      if (attractions.some(a => normKey(a.name) === target)) return true;
+
+      const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`(?:^|[^a-z0-9])${escaped}(?:$|[^a-z0-9])`, 'i');
+      return regex.test(normKey(ev.name || ''));
+    }
+
+    // =========================================================================
+    // RENDER RESULTS CARDS
+    // =========================================================================
+    function setFilter(filter) {
+      activeFilter = filter;
+      document.getElementById('tabAll').className = filter === 'all'
+        ? 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-black transition'
+        : 'px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 hover:text-white transition';
+      document.getElementById('tabPlaying').className = filter === 'playing'
+        ? 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-black transition'
+        : 'px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 hover:text-white transition';
+      renderResults();
+    }
+
+    function renderResults() {
+      const container = document.getElementById('resultsList');
+      const playingCount = resultsData.filter(r => r.events.length > 0).length;
+
+      document.getElementById('countAll').textContent = resultsData.length;
+      document.getElementById('countPlaying').textContent = playingCount;
+
+      const list = activeFilter === 'playing'
+        ? resultsData.filter(r => r.events.length > 0)
+        : resultsData;
+
+      container.innerHTML = '';
+
+      if (list.length === 0) {
+        container.innerHTML = `
+          <div class="sm:col-span-2 surface rounded-2xl p-8 text-center text-xs text-zinc-500">
+            No confirmed Austin shows found for this filter.
+          </div>
+        `;
+        return;
+      }
+
+      list.forEach(item => {
+        const card = document.createElement('div');
+        const hasShows = item.events.length > 0;
+        card.className = `surface rounded-2xl p-4 flex flex-col justify-between gap-4 ${hasShows ? 'border-emerald-500/40' : ''}`;
+
+        const avatar = item.artwork
+          ? `<img src="${item.artwork}" alt="" class="w-12 h-12 rounded-xl object-cover bg-zinc-800 shrink-0">`
+          : `<div class="w-12 h-12 rounded-xl bg-zinc-800 flex items-center justify-center text-sm font-bold text-zinc-400 shrink-0">${escapeHTML(item.artist[0] || '?')}</div>`;
+
+        const tmUrl = `https://www.ticketmaster.com/search?q=${encodeURIComponent(item.artist + ' Austin')}`;
+        const do512Url = `https://do512.com/search?q=${encodeURIComponent(item.artist)}`;
+        const bitUrl = `https://www.bandsintown.com/a/${encodeURIComponent(item.artist)}`;
+        const skUrl = `https://www.songkick.com/search?query=${encodeURIComponent(item.artist + ' Austin')}`;
+
+        let bodyContent = '';
+        if (hasShows) {
+          const showsHtml = item.events.map(ev => `
+            <div class="p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800 flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <div class="text-xs font-semibold text-white truncate">${escapeHTML(ev.venue)}</div>
+                <div class="text-[11px] text-zinc-400">${escapeHTML(ev.date)}</div>
+              </div>
+              <a href="${ev.url}" target="_blank" rel="noopener" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shrink-0 transition">
+                Tickets
+              </a>
+            </div>
+          `).join('');
+
+          bodyContent = `<div class="space-y-2">${showsHtml}</div>`;
+        } else if (item.mode === 'LIVE_API') {
+          bodyContent = `
+            <p class="text-xs text-zinc-500">No upcoming Ticketmaster dates in Austin. Check local indie calendars:</p>
+            <div class="flex flex-wrap gap-1.5">
+              <a href="${do512Url}" target="_blank" rel="noopener" class="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300">Do512</a>
+              <a href="${bitUrl}" target="_blank" rel="noopener" class="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300">Bandsintown</a>
+              <a href="${skUrl}" target="_blank" rel="noopener" class="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300">Songkick</a>
+            </div>
+          `;
+        } else {
+          bodyContent = `
+            <div class="flex flex-wrap gap-1.5">
+              <a href="${tmUrl}" target="_blank" rel="noopener" class="px-2.5 py-1.5 rounded-lg bg-apple-red hover:bg-apple-redHover text-xs font-medium text-white transition">Ticketmaster ATX</a>
+              <a href="${do512Url}" target="_blank" rel="noopener" class="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300">Do512</a>
+              <a href="${bitUrl}" target="_blank" rel="noopener" class="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300">Bandsintown</a>
+              <a href="${skUrl}" target="_blank" rel="noopener" class="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300">Songkick</a>
+            </div>
+          `;
+        }
+
+        card.innerHTML = `
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3 min-w-0">
+              ${avatar}
+              <div class="min-w-0">
+                <a href="${item.appleUrl}" target="_blank" rel="noopener" class="text-sm font-bold text-white hover:underline truncate block">${escapeHTML(item.artist)}</a>
+                <span class="text-xs text-zinc-500">${escapeHTML(item.genre)}</span>
+              </div>
+            </div>
+            ${hasShows
+              ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">Playing ATX</span>`
+              : `<span class="px-2 py-0.5 rounded-full text-[11px] text-zinc-500 bg-zinc-900 shrink-0">${item.mode === 'LIVE_API' ? '0 Dates' : 'Check Links'}</span>`
+            }
+          </div>
+          ${bodyContent}
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    // =========================================================================
+    // API MODAL & HELPERS
+    // =========================================================================
+    function toggleApiModal(show) {
+      const modal = document.getElementById('apiModal');
+      modal.classList.toggle('hidden', !show);
+      modal.classList.toggle('flex', show);
+    }
+
+    function updateKeyIndicator(active) {
+      const dot = document.getElementById('keyDot');
+      const label = document.getElementById('keyLabel');
+      if (active) {
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+        label.textContent = 'Live API Active';
+      } else {
+        dot.className = 'w-2 h-2 rounded-full bg-zinc-500';
+        label.textContent = 'API Settings';
+      }
+    }
+
+    async function saveAndVerifyKey() {
+      const key = document.getElementById('apiKeyInput').value.trim();
+      const fb = document.getElementById('apiFeedback');
+      const btn = document.getElementById('saveKeyBtn');
+
+      if (!key) {
+        clearApiKey();
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Checking...';
+      fb.classList.remove('hidden');
+      fb.className = 'text-xs text-zinc-400';
+      fb.textContent = 'Verifying key with Ticketmaster...';
+
+      try {
+        const res = await fetch(`https://app.ticketmaster.com/discovery/v2/events.json?city=Austin&stateCode=TX&size=1&apikey=${encodeURIComponent(key)}`);
+        if (res.ok) {
+          localStorage.setItem(STORAGE_KEY, key);
+          updateKeyIndicator(true);
+          fb.className = 'text-xs text-emerald-400';
+          fb.textContent = '✓ Key verified and saved!';
+          setTimeout(() => toggleApiModal(false), 700);
+        } else {
+          fb.className = 'text-xs text-rose-400';
+          fb.textContent = 'Invalid Consumer Key. Please check your key.';
+        }
+      } catch (e) {
+        fb.className = 'text-xs text-rose-400';
+        fb.textContent = 'Network error verifying key.';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save & Verify';
+      }
+    }
+
+    function clearApiKey() {
+      localStorage.removeItem(STORAGE_KEY);
+      document.getElementById('apiKeyInput').value = '';
+      document.getElementById('apiFeedback').classList.add('hidden');
+      updateKeyIndicator(false);
+      toggleApiModal(false);
+      notify('API Key cleared.');
+    }
+
+    function formatShortDate(iso) {
+      const p = iso.split('-');
+      if (p.length !== 3) return iso;
+      const d = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10));
+      return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function notify(msg, isError = false) {
+      const box = document.getElementById('toastContainer');
+      const el = document.createElement('div');
+      el.className = `px-4 py-2.5 rounded-xl surface text-xs font-medium shadow-xl ${isError ? 'text-rose-300 border-rose-500/40' : 'text-zinc-200'}`;
+      el.textContent = msg;
+      box.appendChild(el);
+      setTimeout(() => el.remove(), 3200);
+    }
+
+    function decodeEntities(str) {
+      const t = document.createElement('textarea');
+      t.innerHTML = str;
+      return t.value;
+    }
+
+    function escapeHTML(s) {
+      return String(s || '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    }
+
+    function escapeJS(s) {
+      return String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    }
+  </script>
+</body>
+</html>
