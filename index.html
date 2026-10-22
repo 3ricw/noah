@@ -171,10 +171,7 @@
     <section id="resultsSection" class="hidden space-y-4">
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 pb-3">
         <div class="flex flex-nowrap gap-2 max-w-full overflow-x-auto [&>button]:shrink-0 [&>button]:whitespace-nowrap">
-          <button onclick="setFilter('all')" id="tabAll" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-black transition">
-            All (<span id="countAll">0</span>)
-          </button>
-          <button onclick="setFilter('playing')" id="tabPlaying" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 hover:text-white transition">
+          <button onclick="setFilter('playing')" id="tabPlaying" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-black transition">
             Playing in Austin (<span id="countPlaying">0</span>)
           </button>
           <button onclick="setFilter('texas')" id="tabTexas" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 hover:text-white transition">
@@ -196,7 +193,7 @@
     const artistsQueue = new Map(); // normKey -> { name, count }
     const appleCache = new Map();
     let resultsData = [];
-    let activeFilter = 'all';
+    let activeFilter = 'playing';
     let scanning = false;
     let abortScan = false;
     let searchTimeout = null;
@@ -593,7 +590,7 @@
     // =========================================================================
     function setFilter(filter) {
       activeFilter = filter;
-      for (const [value, id] of [['all', 'tabAll'], ['playing', 'tabPlaying'], ['texas', 'tabTexas']]) {
+      for (const [value, id] of [['playing', 'tabPlaying'], ['texas', 'tabTexas']]) {
         document.getElementById(id).className = value === filter
           ? 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-black transition'
           : 'px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 hover:text-white transition';
@@ -603,17 +600,15 @@
 
     function renderResults() {
       const container = document.getElementById('resultsList');
-      const playingCount = resultsData.filter(r => r.events.length > 0).length;
 
-      document.getElementById('countAll').textContent = resultsData.length;
-      document.getElementById('countPlaying').textContent = playingCount;
+      document.getElementById('countPlaying').textContent = resultsData.length;
 
       document.getElementById('countTexas').textContent = resultsData.filter(r => r.texasEvents?.length > 0).length;
       const isTexas = activeFilter === 'texas';
       document.getElementById('regionLabel').textContent = isTexas ? 'Texas statewide • includes Austin' : 'Austin Metro • 35mi radius';
       const list = isTexas
         ? resultsData.filter(r => r.texasEvents?.length > 0).map(r => ({ ...r, events: r.texasEvents, mode: r.texasMode }))
-        : activeFilter === 'playing' ? resultsData.filter(r => r.events.length > 0) : resultsData;
+        : resultsData;
 
       container.innerHTML = '';
 
