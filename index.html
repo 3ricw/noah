@@ -170,7 +170,7 @@
     <!-- Results Section (Hidden until scan runs) -->
     <section id="resultsSection" class="hidden space-y-4">
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 pb-3">
-        <div class="flex flex-wrap gap-2">
+        <div class="flex flex-nowrap gap-2 max-w-full overflow-x-auto [&>button]:shrink-0 [&>button]:whitespace-nowrap">
           <button onclick="setFilter('all')" id="tabAll" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-black transition">
             All (<span id="countAll">0</span>)
           </button>
