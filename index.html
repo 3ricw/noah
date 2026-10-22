@@ -601,7 +601,7 @@
     function renderResults() {
       const container = document.getElementById('resultsList');
 
-      document.getElementById('countPlaying').textContent = resultsData.length;
+      document.getElementById('countPlaying').textContent = resultsData.filter(r => r.events.length > 0).length;
 
       document.getElementById('countTexas').textContent = resultsData.filter(r => r.texasEvents?.length > 0).length;
       const isTexas = activeFilter === 'texas';
